@@ -1,0 +1,1 @@
+sudo docker exec -it tdp-spark-master bin/bash opt/spark/bin/spark-submit --master spark://spark-master:7077 --packages io.delta:delta-core_2.12:2.1.0 /opt/spark-apps/resident_silver_processing.py

@@ -1,0 +1,7 @@
+CREATE SCHEMA tutorials; 
+use tutorials;
+create table author(auth_id int, auth_name varchar(50),  topic varchar(100))STORED AS SEQUENCEFILE;
+insert into table author values (1,'Doug Cutting',1),(2,'James Gosling',2),(3,'Dennis Ritchie',3);
+describe allstarfull;
+select * from hive.tutorials.author;
+curl -X POST -H "Content-Type: application/json" -H "X-Presto-User: root" -d 'SELECT * FROM hive.tutorials.author' http://localhost:8085/v1/statement

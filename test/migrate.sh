@@ -1,0 +1,3 @@
+sudo docker exec -it infra-spark-master bin/bash opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark-apps/resident_migration.py
+# sudo docker exec -it infra-spark-master bin/bash opt/spark/bin/spark-submit --master spark://spark-master:7077 --packages io.delta:delta-core_2.12:2.1.0 /opt/spark-apps/resident_bronze_processing.py
+# sudo docker exec -it infra-spark-master bin/bash opt/spark/bin/spark-submit --master spark://spark-master:7077 --packages io.delta:delta-core_2.12:2.1.0 /opt/spark-apps/resident_silver_processing.py

@@ -1,0 +1,14 @@
+{
+    "name": "postgre-connector",
+    "config": {
+        "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+        "tasks.max": "1",
+        "database.hostname": "postgres",
+        "database.port": "5432",
+        "database.user": "airflow",
+        "database.password": "airflow",
+        "database.dbname" : "airflow",
+        "topic.prefix": "dbserver-postgre",
+        "schema.include.list": "inventory"
+    }
+}

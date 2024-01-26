@@ -1,0 +1,623 @@
+version: '3'
+services:
+
+  #############################################
+  ############## HADOOP  SERVICE ##############
+  #############################################
+  namenode:
+    build: ./.docker/hadoop/hadoop-namenode
+    container_name: ${PROJECT_NAME}-namenode
+    # volumes:
+    #   - ./mnt/hadoop/namenode:/hadoop/dfs/name
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    
+    environment:
+      - CLUSTER_NAME=test
+    ports:
+      - 9870:9870 # Web UI connections
+      - 9000:9000 # client connections 
+    restart: always
+    # env_file:
+    #   - hadoop.env
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "namenode", "9870" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  datanode1:
+    build: ./.docker/hadoop/hadoop-datanode
+    container_name: ${PROJECT_NAME}-datanode1
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    # volumes:
+    #   - ./mnt/hadoop/datanode1:/hadoop/dfs/data
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - 19864:9864
+    # env_file:
+    #   - hadoop.env
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "datanode1", "9864" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+
+  datanode2:
+    build: ./.docker/hadoop/hadoop-datanode
+    container_name: ${PROJECT_NAME}-datanode2
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    # volumes:
+    #   - ./mnt/hadoop/datanode2:/hadoop/dfs/data
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870
+    ports:
+      - 19865:9864
+    # env_file:
+    #   - .hadoop.env
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "datanode2", "9864" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  resourcemanager:
+    build: ./.docker/hadoop/hadoop-resourcemanager
+    container_name: ${PROJECT_NAME}-resourcemanager
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870 namenode:9000 datanode1:9864 datanode2:9864
+    ports:
+      - 18088:8088
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "resourcemanager", "8088" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+    
+  nodemanager:
+    build: ./.docker/hadoop/hadoop-nodemanager
+    container_name: ${PROJECT_NAME}-nodemanager
+    environment:
+      - SERVICE_PRECONDITION=namenode:9870 namenode:9000 datanode1:9864 datanode2:9864 resourcemanager:8088
+    ports:
+      - 18042:8042
+    restart: always
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "nodemanager", "8042" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  
+  #############################################
+  ############### HIVE SERVICE ################
+  #############################################
+  hive-metastore:
+    build: ./.docker/hive/hive-metastore
+    container_name: ${PROJECT_NAME}-hive-metastore
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      - SERVICE_PRECONDITION=postgres:5432 namenode:9000 namenode:9870 datanode1:9864 datanode2:9864
+    # environment:
+    #   - SERVICE_PRECONDITION=postgres:5432 namenode:9000 namenode:9870 datanode1:9864
+    ports:
+      - 9083:9083
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  hive-server:
+    build: ./.docker/hive/hive-server
+    restart: always
+    container_name: ${PROJECT_NAME}-hive-server
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      - SERVICE_PRECONDITION=hive-metastore:9083
+    ports:
+      - "32760:10000"
+      - "32759:10002"
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "hive-server", "10002" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  #############################################
+  ############### SPARK SERVICES ##############
+  #############################################
+  spark-master:
+    build: ./.docker/spark/spark-master
+    restart: always
+    container_name: ${PROJECT_NAME}-spark-master
+    ports:
+      - "32766:8082"
+      - "32765:7077"
+    volumes:
+      - ./mnt/spark/apps:/opt/spark-apps
+      - ./mnt/spark/data:/opt/spark-data
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "spark-master", "8082" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+  spark-worker:
+    build: ./.docker/spark/spark-worker
+    container_name: ${PROJECT_NAME}-spark-worker
+    restart: always
+    # depends_on:
+    #   - spark-master
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    
+    environment:
+      - SERVICE_PRECONDITION=spark-master:8082
+    ports:
+      - "32764:8081"
+    volumes:
+      - ./mnt/spark/apps:/opt/spark-apps
+      - ./mnt/spark/data:/opt/spark-data
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "spark-worker", "8081" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+  
+  #############################################
+  ############### HUE SERVICES ################
+  #############################################
+  hue:
+    build: ./.docker/hue
+    #restart: always
+    container_name: hue
+    logging:
+      driver: "json-file"
+      options:
+          max-file: "5"
+          max-size: "10m"
+    depends_on:
+      - hive-server
+      - postgres
+    ports:
+      - "32762:8888"
+    volumes:
+      - ./.docker/hue/conf/hue.ini:/usr/share/hue/desktop/conf/z-hue.ini
+      - ./.docker/LDAP/certs/ldap.pem:/usr/share/hue/desktop/conf/ldap.pem
+      - ./.docker/LDAP/certs/ca.pem:/usr/share/hue/desktop/conf/ca.pem
+    environment:
+      - SERVICE_PRECONDITION=hive-server:10000 postgres:5432
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "hue", "8888" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+
+  #############################################
+  ############# OPENLDAP SERVICES #############
+  #############################################
+  openldap:
+    image: osixia/openldap:latest
+    container_name: openldap
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      LDAP_LOG_LEVEL: "256"
+      LDAP_ORGANISATION: "Example Inc."
+      LDAP_DOMAIN: "example.org"
+      LDAP_BASE_DN: "dc=example,dc=org"
+      LDAP_ADMIN_PASSWORD: "admin"
+      LDAP_CONFIG_PASSWORD: "config"
+      LDAP_READONLY_USER: "false"
+
+      LDAP_RFC2307BIS_SCHEMA: "false"
+      LDAP_BACKEND: "mdb"
+      LDAP_TLS: "true"
+      LDAP_TLS_CRT_FILENAME: "ldap.pem"
+      LDAP_TLS_KEY_FILENAME: "ldap-key.pem"
+      LDAP_TLS_DH_PARAM_FILENAME: "dhparam.pem"
+      LDAP_TLS_CA_CRT_FILENAME: "ca.pem"
+      LDAP_TLS_ENFORCE: "false"
+      LDAP_TLS_CIPHER_SUITE: "SECURE256:-VERS-SSL3.0"
+      LDAP_TLS_VERIFY_CLIENT: "never"
+      LDAP_REPLICATION: "false"
+
+      KEEP_EXISTING_CONFIG: "false"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "true"
+      LDAP_SSL_HELPER_PREFIX: "openldap"
+    tty: true
+    stdin_open: true
+    volumes:
+      - /var/lib/ldap
+      - /etc/ldap/slapd.d
+      - ./.docker/LDAP/certs/:/container/service/slapd/assets/certs/
+    ports:
+      - "389:389"
+      - "636:636"
+    domainname: "example.org"
+    hostname: "openldap"
+    networks:
+      - infra-network
+
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:latest
+    container_name: phpldapadmin
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: "openldap"
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "800:80"
+    depends_on:
+      - openldap
+    networks:
+      - infra-network
+
+######################################################
+##################### PRESTO #########################
+######################################################
+  presto-coordinator-1:
+    build: ./.docker/presto/presto-coordinator
+    container_name: ${PROJECT_NAME}-presto-coordinator-1
+    logging:
+      driver: "json-file"
+      options:
+          max-file: "5"
+          max-size: "10m"
+    depends_on:
+      - hive-metastore
+      - hive-server
+      - postgres
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./.docker/hadoop/hadoop-base/conf/core-site.xml:/etc/hadoop/conf/core-site.xml
+      - ./.docker/hadoop/hadoop-base/conf/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml
+
+    # healthcheck:
+    #   test: ["CMD", "curl --fail http://localhost:8085/v1/info/state || exit 1"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    networks:
+      - infra-network
+    
+  presto-worker-1:
+    build: ./.docker/presto/presto-worker-1
+    container_name: ${PROJECT_NAME}-presto-worker-1
+    logging:
+      driver: "json-file"
+      options:
+          max-file: "5"
+          max-size: "10m"
+    depends_on:
+      - hive-metastore
+      - hive-server
+      - postgres
+      - presto-coordinator-1
+    ports:
+      - "8087:8087"
+    volumes:
+      - ./.docker/hadoop/hadoop-base/conf/core-site.xml:/etc/hadoop/conf/core-site.xml
+      - ./.docker/hadoop/hadoop-base/conf/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml
+    # healthcheck:
+    #   # test: [ "CMD", "nc", "-z", "presto-worker-1", "8087" ]
+    #   test: ["CMD", "curl", "--fail", "http://presto-worker-1:8087/v1/info/state" ]
+    #   timeout: 45s
+    #   interval: 10s
+    #   retries: 10
+    networks:
+      - infra-network
+
+  presto-worker-2:
+    build: ./.docker/presto/presto-worker-2
+    container_name: ${PROJECT_NAME}-presto-worker-2
+    logging:
+      driver: "json-file"
+      options:
+          max-file: "5"
+          max-size: "10m"
+    depends_on:
+      - hive-metastore
+      - hive-server
+      - postgres
+      - presto-coordinator-1
+    ports:
+      - "8086:8087"
+    volumes:
+      - ./.docker/hadoop/hadoop-base/conf/core-site.xml:/etc/hadoop/conf/core-site.xml
+      - ./.docker/hadoop/hadoop-base/conf/hdfs-site.xml:/etc/hadoop/conf/hdfs-site.xml
+    # healthcheck:
+    #   test: [ "CMD", "nc", "-z", "presto-worker-1", "8087" ]
+    #   timeout: 200s
+    #   interval: 10s
+    #   retries: 10
+    networks:
+      - infra-network
+
+  #############################################
+  ################# DATA-BASE #################
+  #############################################
+  # MONGODB:
+  mongodb:
+    image: mongo:latest
+    container_name: ${PROJECT_NAME}-mongodb
+    volumes:
+      - .docker/mongodb/data.json:/usr/local/data.json
+      - .docker/mongodb/dev-ResidentInfo.json:/usr/local/dev-ResidentInfo.json
+      - .docker/mongodb/init-db.sh:/usr/local/bin/init-db.sh
+    command: mongod --replSet rs0 --port 27017
+    hostname: mongodb
+    ports:
+      - 27018:27017
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+      - MONGODB_USER=debezium
+      - MONGODB_PASSWORD=dbz
+    networks:
+      - infra-network
+
+# # MYSQL:
+  mysql:
+    image: mysql:latest
+    container_name: ${PROJECT_NAME}-mysql
+    ports:
+     - 3306:3306
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    environment:
+     - MYSQL_ROOT_PASSWORD=debezium
+     - MYSQL_USER=mysqluser
+     - MYSQL_PASSWORD=mysqlpw
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "mysql"]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+# # # POSTGRESQL:
+  postgres:
+    build: ./.docker/postgres
+    container_name: ${PROJECT_NAME}-postgres
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+
+      POSTGRES_DB: airflow
+    # volumes:
+    #   - ./mnt/postgres:/input_data
+    #   - ./.docker/postgres/setup_tables:/.docker-entrypoint-initdb.d
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "metastore", "-U", "hive" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    networks:
+      - infra-network
+
+# #############################################
+# ############# KAFKA-DEBEZIUM ################
+# #############################################
+# ZOOKEEPER:
+  zookeeper:
+    image: quay.io/debezium/zookeeper:2.1
+    container_name: ${PROJECT_NAME}-zookeeper
+    ports:
+     - 2181:2181
+     - 2888:2888
+     - 3888:3888
+    networks:
+      - infra-network
+
+# KAFKA:
+  kafka:
+    image: quay.io/debezium/kafka:2.1
+    container_name: ${PROJECT_NAME}-kafka
+    ports:
+     - 9092:9092
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    links:
+     - zookeeper
+    environment:
+     - ZOOKEEPER_CONNECT=zookeeper:2181
+    volumes:
+      - ./mnt/kafka/plugin/kafka-connect-hdfs-10.2.0.jar:/kafka/libs/kafka-connect-hdfs-10.2.0.jar
+    networks:
+      - infra-network
+
+# CONNECTOR:
+  connect:
+    image: quay.io/debezium/connect:2.1
+    container_name: ${PROJECT_NAME}-connector
+    ports:
+     - 8083:8083
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "3"
+        max-size: "30m"
+    links:
+     - kafka
+     - mongodb
+    environment:
+     - BOOTSTRAP_SERVERS=kafka:9092
+     - GROUP_ID=1
+     - CONFIG_STORAGE_TOPIC=my_connect_configs
+     - OFFSET_STORAGE_TOPIC=my_connect_offsets
+     - STATUS_STORAGE_TOPIC=my_connect_statuses
+    networks:
+      - infra-network
+
+# ######################################################
+# ################### AIRFLOW ##########################
+# ######################################################
+
+  # airflow:
+  #   build: ./.docker/airflow
+  #   restart: always
+  #   container_name: airflow
+  #   volumes:
+  #     - ./mnt/airflow/airflow.cfg:/opt/airflow/airflow.cfg
+  #     - ./mnt/airflow/dags:/opt/airflow/dags
+  #   ports:
+  #     - 8080:8080
+  #   environment:
+  #     - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+  #     - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-file: "3"
+  #       max-size: "30m"
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "airflow", "8080" ]
+  #     timeout: 45s
+  #     interval: 10s
+  #     retries: 10
+  #   networks:
+  #     - infra-network
+
+  # scheduler:
+  #   build: ./.docker/airflow
+  #   container_name: scheduler
+  #   restart_policy:
+  #       condition: on-failure
+  #   condition: on-failure
+  #   depends_on:
+  #     - postgres
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #     - ./logs:/opt/airflow/logs
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-file: "3"
+  #       max-size: "30m"
+  #   networks:
+  #     - infra-network
+
+  # webserver:
+  #   build: ./.docker/airflow
+  #   container_name: scheduler
+  #   restart_policy:
+  #       condition: on-failure
+  #   condition: on-failure
+  #   depends_on:
+  #     - postgres
+  #     - scheduler
+  #   volumes:
+  #     - ./dags:/opt/airflow/dags
+  #     - ./logs:/opt/airflow/logs
+  #     - ./scripts:/opt/airflow/scripts
+  #   ports:
+  #     - "8080:8080"
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-file: "3"
+  #       max-size: "30m"
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "airflow", "8080" ]
+  #     timeout: 45s
+  #     interval: 10s
+  #     retries: 10
+  #   networks:
+  #     - infra-network
+
+# ######################################################
+# ##################### NETWORK ########################
+# ######################################################
+
+
+networks:
+  infra-network:
+    name: infra-network
+
